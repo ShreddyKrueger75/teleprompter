@@ -100,7 +100,7 @@ BUILT FOR THREE SETUPS
 Tell Teleprompter where your camera is and it adjusts itself:
 • Under the notch — a small window below a built-in camera, reading line near the top
 • Beside a webcam — read at arm's length from a monitor
-• Behind glass — a beam-splitter rig, with a centred line, large type and mirroring
+• Behind glass — a beam-splitter rig, with large type, mirroring and room to read ahead
 
 MADE FOR RETAKES
 Jump back or forward five seconds, scrub through the script with the trackpad, and get a
@@ -134,8 +134,8 @@ Teleprompter collects no data and has no account.
 2. **No app on a fresh Mac without an on-device speech model.** Voice scrolling turns itself off
    with an explanation. Everything else works, so this is not a crash path, but a reviewer
    testing voice on a clean VM will see that message.
-3. **Global hotkeys.** ⌃⌥Space is macOS's default "select next input source" shortcut when a user
-   has more than one keyboard layout. If that matters to your users, consider a different default
-   before submitting; the app reports a hotkey it could not register rather than failing silently.
+3. **Global hotkeys.** ⌃⌥Space is macOS's own "select previous input source" shortcut for anyone
+   with more than one keyboard layout, so **⌃⌥P also plays and pauses** and the app works either
+   way. A hotkey it could not register is reported in Settings rather than failing silently.
 4. **Version.** Marketing version 1.0, build 1. Bump `CURRENT_PROJECT_VERSION` in `project.yml`
    for every upload — App Store Connect rejects a repeated build number.

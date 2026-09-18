@@ -120,10 +120,11 @@ struct SettingsView: View {
             Section("Voice") {
                 Toggle("Scroll as I speak", isOn: $model.settings.voice)
                     .onChange(of: model.settings.voice) { _, on in if on { model.prepareVoice() } }
-                if let notice = model.notice {
+                if let notice = model.voiceNotice {
                     Label(notice, systemImage: "exclamationmark.triangle.fill")
                         .font(.callout)
                         .foregroundStyle(.orange)
+                        .accessibilityAddTraits(.isStaticText)
                     Button("Open System Settings") {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
                             NSWorkspace.shared.open(url)
@@ -137,8 +138,13 @@ struct SettingsView: View {
             }
 
             Section("Hotkeys, which work while another app is in front") {
+                if let notice = model.hotkeyNotice {
+                    Label(notice, systemImage: "exclamationmark.triangle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                }
                 Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 4) {
-                    row("Control Option Space", "Play or pause")
+                    row("Control Option Space or P", "Play or pause")
                     row("Control Option Up", "Faster")
                     row("Control Option Down", "Slower")
                     row("Control Option Left", "Back 5 seconds")

@@ -33,15 +33,15 @@ enum Rig: String, Codable, CaseIterable {
         switch self {
         case .underNotch: "Small window just below a built-in camera. Reading line near the top."
         case .besideWebcam: "Window near a webcam on a monitor, read from arm's length."
-        case .behindGlass: "Beam-splitter rig read from 1-3 m. Centred line, large type, mirrored."
+        case .behindGlass: "Beam-splitter rig read from 1-3 m. Large type, mirrored, with room to read ahead."
         }
     }
-    /// Fraction of window height where the reading line sits.
+    /// Fraction of window height where the reading line sits. Leaves room below it to read ahead.
     var guidePosition: CGFloat {
         switch self {
         case .underNotch: 0.20
         case .besideWebcam: 0.28
-        case .behindGlass: 0.50
+        case .behindGlass: 0.42
         }
     }
     var fontRange: ClosedRange<Double> {
@@ -55,7 +55,7 @@ enum Rig: String, Codable, CaseIterable {
         switch self {
         case .underNotch: 28
         case .besideWebcam: 44
-        case .behindGlass: 110
+        case .behindGlass: 84
         }
     }
     var mirrorsByDefault: Bool { self == .behindGlass }
@@ -84,19 +84,22 @@ struct Settings: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let d = Settings()
         wpm = try c.decodeIfPresent(Double.self, forKey: .wpm) ?? d.wpm
-        rig = try c.decodeIfPresent(Rig.self, forKey: .rig) ?? d.rig
+        // ponytail: `try?` on the enums too, so an unknown case costs that one field, not all of them
+        rig = ((try? c.decodeIfPresent(Rig.self, forKey: .rig)) ?? nil) ?? d.rig
         fontSize = try c.decodeIfPresent(Double.self, forKey: .fontSize) ?? d.fontSize
         lineSpacing = try c.decodeIfPresent(Double.self, forKey: .lineSpacing) ?? d.lineSpacing
         margin = try c.decodeIfPresent(Double.self, forKey: .margin) ?? d.margin
         opacity = try c.decodeIfPresent(Double.self, forKey: .opacity) ?? d.opacity
         countdown = try c.decodeIfPresent(Int.self, forKey: .countdown) ?? d.countdown
-        theme = try c.decodeIfPresent(Theme.self, forKey: .theme) ?? d.theme
+        theme = ((try? c.decodeIfPresent(Theme.self, forKey: .theme)) ?? nil) ?? d.theme
         mirrorH = try c.decodeIfPresent(Bool.self, forKey: .mirrorH) ?? d.mirrorH
         mirrorV = try c.decodeIfPresent(Bool.self, forKey: .mirrorV) ?? d.mirrorV
         guide = try c.decodeIfPresent(Bool.self, forKey: .guide) ?? d.guide
         hideFromShare = try c.decodeIfPresent(Bool.self, forKey: .hideFromShare) ?? d.hideFromShare
         voice = try c.decodeIfPresent(Bool.self, forKey: .voice) ?? d.voice
         alwaysOnTop = try c.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? d.alwaysOnTop
+        // A hand-edited or older blob can hold a size this rig does not allow.
+        fontSize = min(max(fontSize, rig.fontRange.lowerBound), rig.fontRange.upperBound)
     }
 
     static func load() -> Settings {
@@ -109,26 +112,40 @@ struct Settings: Codable {
 @Observable @MainActor
 final class Prompter {
     var settings = Settings.load() {
-        didSet { settings.save(); syncVoice(); onSettingsChange?() }
+        didSet {
+            settings.save()
+            // Only touch the audio engine when voice itself changed: this fires on every
+            // slider tick otherwise.
+            if settings.voice != oldValue.voice { syncVoice() }
+            onSettingsChange?()
+        }
     }
     var script = UserDefaults.standard.string(forKey: "script") ?? "" {
         didSet {
             UserDefaults.standard.set(script, forKey: "script")
             matcher = WordMatcher(script: script)
             wordCount = matcher.words.count
+            // A new script is a new read: never open part-way into it.
+            offset = 0
+            voiceTarget = 0
+            textHeight = 0
         }
     }
     var offset: CGFloat = 0          // pixels the script has scrolled past the reading line
     var playing = false
     var countdownLeft = 0
-    var textHeight: CGFloat = 0      // laid-out script height, reported by the view
+    /// Height of the script itself, reported by the view. Excludes the end-of-script mark,
+    /// because pace is measured against the words.
+    var textHeight: CGFloat = 0
     var wordCount = 0
     var onSettingsChange: (() -> Void)?
-    /// Set when the reader needs to be told something, e.g. voice was refused.
-    var notice: String?
+    /// Mirrors the recogniser so the microphone button redraws when listening starts.
+    private(set) var voiceState = VoiceScroll.State.off
+    /// Why voice could not run. Cleared as soon as it works.
+    var voiceNotice: String?
+    /// A hotkey another app already owns. Separate from voice: different cause, different remedy.
+    var hotkeyNotice: String?
 
-    var voiceState: VoiceScroll.State { voice.state }
-    /// True once the last line has cleared the reading line.
     var atEnd: Bool { textHeight > 0 && offset >= textHeight }
     var progress: Double { textHeight > 0 ? min(1, max(0, offset / textHeight)) : 0 }
 
@@ -136,6 +153,7 @@ final class Prompter {
     private var last: Date?
     private var matcher = WordMatcher(script: "")
     private var voiceTarget: CGFloat = 0
+    private var countdownToken = 0
     private let voice = VoiceScroll()
 
     init() {
@@ -143,10 +161,15 @@ final class Prompter {
         wordCount = matcher.words.count
         voice.onTranscript = { [weak self] t in self?.heard(t) }
         voice.onSessionRestart = { [weak self] in self?.matcher.newSession() }
+        voice.onStateChange = { [weak self] state in
+            guard let self else { return }
+            voiceState = state
+            if state == .listening { voiceNotice = nil }
+        }
         voice.onUnavailable = { [weak self] reason in
             guard let self else { return }
             settings.voice = false          // never leave the mic looking live when it is not
-            notice = reason
+            voiceNotice = reason
         }
     }
 
@@ -163,9 +186,10 @@ final class Prompter {
 
     func play() {
         if atEnd { restart() }              // the read is over; play means "go again"
-        guard settings.countdown > 0, countdownLeft == 0 else { start(); return }
+        guard settings.countdown > 0 else { start(); return }
         countdownLeft = settings.countdown  // every start gets a countdown, not just from the top
-        tickCountdown()
+        countdownToken += 1
+        tickCountdown(countdownToken)
     }
 
     private func start() {
@@ -177,15 +201,14 @@ final class Prompter {
         }
         RunLoop.main.add(t, forMode: .common)
         timer = t
-        syncVoice()
     }
 
     func pause() {
+        countdownToken += 1                 // strands any countdown already in flight
         countdownLeft = 0
         playing = false
         timer?.invalidate()
         timer = nil
-        syncVoice()
     }
 
     func restart() {
@@ -209,18 +232,21 @@ final class Prompter {
         settings.wpm = min(240, max(60, (settings.wpm + delta).rounded()))
     }
 
-    /// Applied when the reader picks a rig, so the preset actually changes something.
+    /// Applied when the reader picks a rig. Only overrides what the new rig actually
+    /// requires, so a hand-tuned size survives a look at the other options.
     func apply(rig: Rig) {
         settings.rig = rig
-        settings.fontSize = min(max(rig.suggestedFontSize, rig.fontRange.lowerBound), rig.fontRange.upperBound)
-        settings.mirrorH = rig.mirrorsByDefault
+        if !rig.fontRange.contains(settings.fontSize) {
+            settings.fontSize = min(max(settings.fontSize, rig.fontRange.lowerBound), rig.fontRange.upperBound)
+        }
+        if rig.mirrorsByDefault && !settings.mirrorH { settings.mirrorH = true }
     }
 
-    private func tickCountdown() {
+    private func tickCountdown(_ token: Int) {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let self, countdownLeft > 0 else { return }
+            guard let self, token == countdownToken, countdownLeft > 0 else { return }
             countdownLeft -= 1
-            countdownLeft == 0 ? start() : tickCountdown()
+            countdownLeft == 0 ? start() : tickCountdown(token)
         }
     }
 
@@ -228,7 +254,7 @@ final class Prompter {
         let now = Date()
         let dt = last.map { now.timeIntervalSince($0) } ?? 0
         last = now
-        if voice.state == .listening {
+        if voiceState == .listening {
             offset += (voiceTarget - offset) * min(1, dt * 3)   // ease toward the spoken position
         } else {
             offset += pxPerSec * dt
@@ -246,10 +272,13 @@ final class Prompter {
     }
 
     private func syncVoice() {
-        settings.voice ? voice.start() : voice.stop()
+        guard settings.voice else { voice.stop(); return }
+        // Start listening from where the reader actually is, not from the top.
+        seek(to: offset)
+        voice.start()
     }
 
     /// Ask for microphone and speech access when the reader switches voice on,
     /// not in the middle of their first take.
-    func prepareVoice() { if settings.voice { voice.start() } }
+    func prepareVoice() { if settings.voice { syncVoice() } }
 }

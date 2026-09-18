@@ -12,9 +12,15 @@ final class VoiceScroll {
     private let recognizer = SFSpeechRecognizer() ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
-    private(set) var state = State.off
+    /// Mirrored out through `onStateChange`, because this class is not observable and
+    /// the microphone button has to redraw when listening actually starts.
+    private(set) var state = State.off {
+        didSet { if state != oldValue { onStateChange?(state) } }
+    }
     var onTranscript: ((String) -> Void)?
     var onSessionRestart: (() -> Void)?
+    var onStateChange: ((State) -> Void)?
+    private var consecutiveFailures = 0
     /// Called with a reader-facing reason when voice cannot run.
     var onUnavailable: ((String) -> Void)?
 
@@ -22,6 +28,7 @@ final class VoiceScroll {
 
     func start() {
         guard state == .off || state == .failed else { return }
+        consecutiveFailures = 0
         state = .starting
         SFSpeechRecognizer.requestAuthorization { status in
             Task { @MainActor in
@@ -97,11 +104,23 @@ final class VoiceScroll {
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
             Task { @MainActor in
                 guard let self else { return }
-                if let result { self.onTranscript?(result.bestTranscription.formattedString) }
+                if let result {
+                    self.onTranscript?(result.bestTranscription.formattedString)
+                    self.consecutiveFailures = 0     // it is working; forget earlier stumbles
+                }
                 if error != nil || result?.isFinal == true {
                     // ponytail: sessions end after ~1 min or on silence; just open another
                     guard self.wantsToRun else { return }
                     self.endSession()
+                    if result == nil, error != nil {
+                        self.consecutiveFailures += 1
+                        // A recogniser that keeps erroring must not become a silent
+                        // start/stop loop on the audio hardware.
+                        guard self.consecutiveFailures < 5 else {
+                            self.fail("Speech recognition kept failing, so voice scrolling is off. The script scrolls at the pace you set instead.")
+                            return
+                        }
+                    }
                     self.state = .starting
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.beginSession() }
                 }

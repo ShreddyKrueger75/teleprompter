@@ -22,8 +22,9 @@ struct PrompterView: View {
 
                 Group {
                     if s.guide {
+                        // Capped, or a 240 pt font turns the band into most of the window.
                         s.theme.fg.opacity(0.14)
-                            .frame(height: lineHeight)
+                            .frame(height: min(lineHeight, geo.size.height * 0.4))
                             .offset(y: guideY)
                         Image(systemName: "arrowtriangle.right.fill")
                             .font(.system(size: max(10, s.fontSize * 0.38)))
@@ -83,23 +84,29 @@ struct PrompterView: View {
                 .frame(maxWidth: .infinity)
                 .offset(y: guideY)
         } else {
-            VStack(spacing: s.fontSize) {
-                Text(model.script)
-                    .font(.system(size: s.fontSize, weight: .medium))
-                    .lineSpacing(s.fontSize * (s.lineSpacing - 1))
-                    .multilineTextAlignment(.center)
-                Text("End of script")
-                    .font(.system(size: max(12, s.fontSize * 0.45), weight: .semibold))
-                    .foregroundStyle(s.theme.fg.opacity(0.5))
-            }
-            .foregroundStyle(s.theme.fg)
-            .frame(width: max(40, width - s.margin * 2))
-            // The script lays out at its full natural height; the window is a viewport
-            // onto it, so long scripts scroll instead of truncating.
-            .fixedSize(horizontal: false, vertical: true)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { model.textHeight = $0 }
-            .offset(y: guideY - model.offset)
-            .frame(maxWidth: .infinity)
+            Text(model.script)
+                .font(.system(size: s.fontSize, weight: .medium))
+                .lineSpacing(s.fontSize * (s.lineSpacing - 1))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(s.theme.fg)
+                .frame(width: max(40, width - s.margin * 2))
+                // The script lays out at its full natural height; the window is a viewport
+                // onto it, so long scripts scroll instead of truncating.
+                .fixedSize(horizontal: false, vertical: true)
+                // Measured on the words alone. The end mark below must not count, or the
+                // reader finishes early and the clock disagrees with them.
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { model.textHeight = $0 }
+                // Keeps the script readable when the background is turned down and a bright
+                // desktop or video call shows through behind it.
+                .shadow(color: s.theme.bg.opacity(s.opacity < 1 ? 0.9 : 0), radius: max(2, s.fontSize * 0.09))
+                .overlay(alignment: .bottom) {
+                    Text("End of script")
+                        .font(.system(size: max(12, s.fontSize * 0.45), weight: .semibold))
+                        .foregroundStyle(s.theme.fg.opacity(0.85))
+                        .alignmentGuide(.bottom) { $0[.top] - s.fontSize }
+                }
+                .offset(y: guideY - model.offset)
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -163,10 +170,14 @@ struct ControlBar: View {
                     .accessibilityValue("\(clock(model.elapsed)) of \(clock(model.duration))")
             }
             if showsModes {
-                toggle(on: "flip.horizontal", off: "flip.horizontal",
+                toggle(on: "flip.horizontal.fill", off: "flip.horizontal",
                        "Mirror horizontally", $model.settings.mirrorH)
                 toggle(on: "eye.slash.fill", off: "eye",
                        "Hide from screen sharing", $model.settings.hideFromShare)
+            }
+            // The microphone indicator stays even in the narrowest bar: a live mic must
+            // never be listening with nothing on screen to say so.
+            if showsModes || model.settings.voice {
                 toggle(on: model.voiceState == .listening ? "waveform" : "mic.fill", off: "mic.slash",
                        "Scroll by voice", $model.settings.voice)
             }

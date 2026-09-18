@@ -21,10 +21,11 @@ Native SwiftUI + AppKit, no dependencies, sandboxed.
 - Scroll by voice, using on-device speech recognition only — audio never leaves your Mac
 - Script editor with clipboard and file import, every replacement undoable
 - Global hotkeys that work while another app has focus, with no Accessibility permission
+- Readable over a translucent background, so you can see the call behind it
 
 | Hotkey | Action |
 | --- | --- |
-| ⌃⌥ Space | Play / pause |
+| ⌃⌥ Space or ⌃⌥ P | Play / pause |
 | ⌃⌥ ↑ / ↓ | Faster / slower |
 | ⌃⌥ ← / → | Back / forward 5 s |
 | ⌃⌥ R | Restart |
