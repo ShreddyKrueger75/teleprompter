@@ -1,18 +1,18 @@
 #!/bin/zsh
-# Builds Teleprompter.app next to this script. Usage: ./build.sh [--run]
+# Builds Teleprompter.app from the Xcode project. Usage: ./build.sh [--run]
+# Xcode is the source of truth; regenerate the project with `xcodegen generate` after
+# editing project.yml.
 set -e
 cd "$(dirname "$0")"
-APP=Teleprompter.app
 ARCH=$(uname -m)
 
-# self-check the pure logic first
+# pure-logic self-check first, so a broken matcher fails before a five-minute build
 swiftc -swift-version 5 -target "$ARCH-apple-macosx14.0" Sources/WordMatcher.swift Tests/main.swift -o "${TMPDIR:-/tmp}/tp-check"
 "${TMPDIR:-/tmp}/tp-check"
 
-mkdir -p "$APP/Contents/MacOS"
-# ponytail: swift 5 language mode keeps AppKit/Carbon callback code free of strict-concurrency churn
-swiftc -O -swift-version 5 -target "$ARCH-apple-macosx14.0" Sources/*.swift -o "$APP/Contents/MacOS/Teleprompter"
-cp Info.plist "$APP/Contents/Info.plist"
-codesign --force -s - "$APP"   # ad-hoc signature so mic/speech permission prompts stick
+xcodebuild -project Teleprompter.xcodeproj -scheme Teleprompter \
+  -configuration Release -derivedDataPath build build
+
+APP="build/Build/Products/Release/Teleprompter.app"
 echo "built $APP"
 [[ "$1" == "--run" ]] && open "$APP"

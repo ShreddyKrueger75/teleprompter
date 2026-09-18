@@ -1,2 +1,7 @@
+build/
+DerivedData/
 Teleprompter.app/
 .DS_Store
+*.xcuserstate
+xcuserdata/
+.impeccable/evidence/

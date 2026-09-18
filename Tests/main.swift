@@ -12,6 +12,25 @@ m.newSession()
 m.feed(transcript: "you through")
 assert(m.position == 11, "new session continues from position")
 assert(abs(m.fraction - 11.0 / 13.0) < 0.001)
+
+// Scrubbing moves the voice match with it, so voice does not drag the reader back.
+m.seek(fraction: 0.5)
+assert(m.position == 7, "seek lands on the matching word, 13 * 0.5 rounded")
+m.seek(fraction: 0)
+assert(m.position == 0, "seek to the start")
+m.seek(fraction: 2)
+assert(m.position == 13, "seek past the end clamps to the last word")
+m.seek(fraction: -1)
+assert(m.position == 0, "seek before the start clamps to zero")
+
+// An empty script must not divide by zero.
+var empty = WordMatcher(script: "")
+assert(empty.fraction == 0)
+empty.feed(transcript: "anything at all")
+assert(empty.position == 0, "no script means nothing to match")
+empty.seek(fraction: 0.5)
+assert(empty.position == 0)
+
 m.reset()
 assert(m.position == 0)
 print("WordMatcher ok")

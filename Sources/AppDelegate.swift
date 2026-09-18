@@ -5,6 +5,13 @@ import SwiftUI
 /// Borderless windows refuse key status by default; the control bar needs it.
 final class PrompterWindow: NSWindow {
     override var canBecomeKey: Bool { true }
+
+    /// Scrubbing the script with the trackpad. Handled at the window, because no SwiftUI
+    /// view claims scroll events, and so the buttons above keep their own clicks.
+    var onScroll: ((CGFloat) -> Void)?
+    override func scrollWheel(with event: NSEvent) {
+        onScroll?(-event.scrollingDeltaY * 2)
+    }
 }
 
 @MainActor
@@ -13,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var prompter: NSWindow!
     private var settings: NSWindow!
     private var hotKeys: [EventHotKeyRef?] = []
+    private var showHideItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ note: Notification) {
         buildMenu()
@@ -27,10 +35,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    /// Clicking the Dock icon brings the prompter back after ⌃⌥H hid it.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        prompter.orderFront(nil)
+        return true
+    }
+
     // MARK: windows
 
     private func makeWindows() {
-        let p = PrompterWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 180),
+        let p = PrompterWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 200),
                                styleMask: [.borderless, .resizable, .fullSizeContentView],
                                backing: .buffered, defer: false)
         p.isOpaque = false
@@ -38,22 +52,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.hasShadow = true
         p.isMovableByWindowBackground = true
         p.isReleasedWhenClosed = false
-        p.minSize = NSSize(width: 240, height: 90)
+        // Small enough to tuck under a notch, never so small the controls clip.
+        p.minSize = NSSize(width: 320, height: 140)
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         p.contentView = NSHostingView(rootView: PrompterView(model: model) { [weak self] in self?.showSettings() })
+        p.onScroll = { [weak self] delta in
+            guard let self, !model.playing else { return }   // scrubbing is a paused-only gesture
+            model.seek(to: model.offset + delta)
+        }
         if !p.setFrameUsingName("Prompter"), let screen = NSScreen.main {
             // first launch: park it top-centre, right under the camera
             let f = screen.visibleFrame
-            p.setFrameOrigin(NSPoint(x: f.midX - 240, y: f.maxY - 180))
+            p.setFrameOrigin(NSPoint(x: f.midX - 260, y: f.maxY - 200))
         }
         p.setFrameAutosaveName("Prompter")
         prompter = p
 
-        let s = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 520),
+        let s = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 620),
                          styleMask: [.titled, .closable, .miniaturizable, .resizable],
                          backing: .buffered, defer: false)
-        s.title = "Teleprompter"
+        s.title = "Script and settings"
         s.isReleasedWhenClosed = false
+        s.minSize = NSSize(width: 720, height: 460)
         s.contentView = NSHostingView(rootView: SettingsView(model: model))
         s.center()
         s.setFrameAutosaveName("Settings")
@@ -64,7 +84,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let s = model.settings
         prompter.level = s.alwaysOnTop ? .floating : .normal
         prompter.sharingType = s.hideFromShare ? .none : .readOnly
-        prompter.alphaValue = s.opacity
     }
 
     @objc private func showSettings() {
@@ -74,13 +93,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func togglePrompter() {
         prompter.isVisible ? prompter.orderOut(nil) : prompter.orderFront(nil)
+        showHideItem?.title = prompter.isVisible ? "Hide prompter" : "Show prompter"
     }
 
     @objc private func togglePlay() { model.togglePlay() }
     @objc private func restart() { model.restart() }
     @objc private func jumpBack() { model.jumpBack() }
-    @objc private func faster() { model.adjustSpeed(0.1) }
-    @objc private func slower() { model.adjustSpeed(-0.1) }
+    @objc private func jumpForward() { model.jumpForward() }
+    @objc private func faster() { model.adjustWPM(5) }
+    @objc private func slower() { model.adjustWPM(-5) }
 
     // MARK: menu
 
@@ -104,15 +125,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         main.addItem(withTitle: "Edit", action: nil, keyEquivalent: "").submenu = edit
 
+        // No key equivalents here: these actions belong to the global ⌃⌥ hotkeys, and
+        // ⌘-arrows are caret movement while the script is being edited.
         let ctl = NSMenu(title: "Prompter")
-        ctl.addItem(withTitle: "Play / Pause", action: #selector(togglePlay), keyEquivalent: "\r")
-        ctl.addItem(withTitle: "Restart", action: #selector(restart), keyEquivalent: "r")
-        ctl.addItem(withTitle: "Jump back 5 s", action: #selector(jumpBack), keyEquivalent: String(UnicodeScalar(NSLeftArrowFunctionKey)!))
-        ctl.addItem(withTitle: "Faster", action: #selector(faster), keyEquivalent: String(UnicodeScalar(NSUpArrowFunctionKey)!))
-        ctl.addItem(withTitle: "Slower", action: #selector(slower), keyEquivalent: String(UnicodeScalar(NSDownArrowFunctionKey)!))
+        for (title, sel) in [("Play or pause", #selector(togglePlay)),
+                             ("Restart", #selector(restart)),
+                             ("Back 5 seconds", #selector(jumpBack)),
+                             ("Forward 5 seconds", #selector(jumpForward)),
+                             ("Faster", #selector(faster)),
+                             ("Slower", #selector(slower))] {
+            ctl.addItem(withTitle: title, action: sel, keyEquivalent: "")
+        }
         ctl.addItem(.separator())
-        ctl.addItem(withTitle: "Show / Hide Prompter", action: #selector(togglePrompter), keyEquivalent: "p")
+        let hide = NSMenuItem(title: "Hide prompter", action: #selector(togglePrompter), keyEquivalent: "")
+        ctl.addItem(hide)
+        showHideItem = hide
         main.addItem(withTitle: "Prompter", action: nil, keyEquivalent: "").submenu = ctl
+
+        let window = NSMenu(title: "Window")
+        window.addItem(withTitle: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        window.addItem(withTitle: "Minimise", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        main.addItem(withTitle: "Window", action: nil, keyEquivalent: "").submenu = window
+        NSApp.windowsMenu = window
+
+        let help = NSMenu(title: "Help")
+        help.addItem(withTitle: "Teleprompter help", action: #selector(showSettings), keyEquivalent: "?")
+        main.addItem(withTitle: "Help", action: nil, keyEquivalent: "").submenu = help
 
         NSApp.mainMenu = main
     }
@@ -131,22 +169,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), nil)
 
         let mods = UInt32(controlKey | optionKey)
-        for (i, code) in [kVK_Space, kVK_UpArrow, kVK_DownArrow, kVK_LeftArrow, kVK_ANSI_R, kVK_ANSI_H].enumerated() {
+        let keys: [(Int, String)] = [(kVK_Space, "Space"), (kVK_UpArrow, "Up"), (kVK_DownArrow, "Down"),
+                                     (kVK_LeftArrow, "Left"), (kVK_ANSI_R, "R"), (kVK_ANSI_H, "H"),
+                                     (kVK_RightArrow, "Right")]
+        var failed: [String] = []
+        for (i, key) in keys.enumerated() {
             var ref: EventHotKeyRef?
-            RegisterEventHotKey(UInt32(code), mods, EventHotKeyID(signature: 0x54504D54, id: UInt32(i)),
-                                GetApplicationEventTarget(), 0, &ref)
-            hotKeys.append(ref)
+            let status = RegisterEventHotKey(UInt32(key.0), mods, EventHotKeyID(signature: 0x54504D54, id: UInt32(i)),
+                                             GetApplicationEventTarget(), 0, &ref)
+            // A hotkey another app already owns must not fail silently.
+            status == noErr ? hotKeys.append(ref) : failed.append("Control Option \(key.1)")
+        }
+        if !failed.isEmpty {
+            model.notice = "Another app already uses \(failed.joined(separator: ", ")), so that hotkey will not reach Teleprompter."
         }
     }
 
     private func hotKey(_ id: UInt32) {
         switch id {
         case 0: model.togglePlay()
-        case 1: model.adjustSpeed(0.1)
-        case 2: model.adjustSpeed(-0.1)
+        case 1: model.adjustWPM(5)
+        case 2: model.adjustWPM(-5)
         case 3: model.jumpBack()
         case 4: model.restart()
         case 5: togglePrompter()
+        case 6: model.jumpForward()
         default: break
         }
     }

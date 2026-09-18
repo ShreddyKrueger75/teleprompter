@@ -30,5 +30,11 @@ struct WordMatcher {
     /// Call when the recognizer starts a fresh session (its transcript restarts from empty).
     mutating func newSession() { consumed = 0 }
 
+    /// Move the match position to a fraction of the script, after the reader scrubs or jumps,
+    /// so voice picks up from where they actually are rather than dragging them back.
+    mutating func seek(fraction f: Double) {
+        position = min(words.count, max(0, Int((Double(words.count) * f).rounded())))
+    }
+
     mutating func reset() { position = 0; consumed = 0 }
 }
