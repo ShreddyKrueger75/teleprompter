@@ -4,6 +4,12 @@ The app is prepared for submission. The steps below are the ones that need your 
 so they are yours to do — they involve signing in as you, accepting Apple's agreements, and
 publishing under your name.
 
+## Status
+
+**A signed, App Store-ready `Teleprompter.pkg` has been built.** Certificates, the App ID and the
+provisioning profile were created automatically during export. What remains is creating the app
+record in App Store Connect and uploading — both need your Apple account, so they are yours.
+
 ## What is already done
 
 - Xcode project (`Teleprompter.xcodeproj`, generated from `project.yml`)
@@ -17,58 +23,58 @@ publishing under your name.
 - `LSApplicationCategoryType`, copyright, minimum system version 14.0, version 1.0 (build 1)
 - Microphone and speech permission strings that state audio never leaves the Mac
 - Hardened Runtime on
-- `xcodebuild archive` succeeds
+- **Signed distribution build produced**: `Teleprompter.pkg` at the project root
+  - App signed by `Apple Distribution: John LaCroix (H32976WAHU)`
+  - Installer signed by `3rd Party Mac Developer Installer: John LaCroix (H32976WAHU)`
+  - Bundle ID `Bloody-Finger-Software.Teleprompter`, version 1.0 (build 1)
+  - Sandbox, audio-input and user-selected-file entitlements verified in the shipped binary
 
 ## What you need to do
 
-### 1. Apple Developer Program
-
-Mac App Store distribution needs a **paid** membership ($99/year). This Mac has Team ID
-`H32976WAHU` with only an *Apple Development* certificate installed — that signs local builds but
-cannot ship to the store. If you are not enrolled in the paid program yet, start at
-<https://developer.apple.com/programs/>.
-
-### 2. Certificates
-
-In Xcode, Settings → Accounts → Manage Certificates, add:
-
-- **Apple Distribution** (signs the app)
-- **Mac Installer Distribution** (signs the `.pkg` that gets uploaded)
-
-Then set your team: open `project.yml`, put your Team ID in `DEVELOPMENT_TEAM`, and run
-`xcodegen generate`. Or just pick the team in Xcode under Signing & Capabilities.
-
-### 3. Register the app in App Store Connect
+### 1. Create the app record in App Store Connect
 
 At <https://appstoreconnect.apple.com> → Apps → **+** → New macOS App.
 
-- **Bundle ID:** `com.johnlacroix.teleprompter` (register it first at Certificates, Identifiers &
-  Profiles → Identifiers)
+- **Bundle ID:** `Bloody-Finger-Software.Teleprompter` — already registered on your account
+  during export, so pick it from the dropdown
 - **SKU:** anything unique, e.g. `teleprompter-1`
 - **Primary language:** English
 
-### 4. Archive and upload
+### 2. Upload the build
+
+The package is already built and signed. Upload it either way:
+
+**Xcode (simplest):** Window → Organizer → Archives → select the Teleprompter archive →
+Distribute App → App Store Connect → Upload.
+
+**Or from the terminal**, with an app-specific password from appleid.apple.com:
 
 ```bash
-xcodegen generate
-open Teleprompter.xcodeproj
+xcrun altool --upload-app -f Teleprompter.pkg -t macos -u <your-apple-id> -p <app-specific-password>
 ```
 
-Product → Archive, then Distribute App → App Store Connect → Upload.
+To rebuild the package from scratch at any point:
 
-### 5. Fill in the listing
+```bash
+xcodebuild -project Teleprompter.xcodeproj -scheme Teleprompter -configuration Release \
+  -archivePath build/TP.xcarchive archive -allowProvisioningUpdates
+xcodebuild -exportArchive -archivePath build/TP.xcarchive \
+  -exportOptionsPlist ExportOptions.plist -exportPath build/export -allowProvisioningUpdates
+```
+
+### 3. Fill in the listing
 
 Draft copy is below. Screenshots are required: at least one, 1280×800 or 1440×900. You can take
 them with ⌘⇧4 then Space over the prompter window, but note that **hide-from-screen-sharing must
 be switched off** or the window will not appear in the capture.
 
-### 6. Privacy answers
+### 4. Privacy answers
 
 App Privacy → "Data Not Collected". The app collects nothing, has no network code, and speech
 recognition is forced on-device (`requiresOnDeviceRecognition = true`). Encryption question:
 answer **No** — it uses no encryption.
 
-### 7. Submit for review
+### 5. Submit for review
 
 ---
 

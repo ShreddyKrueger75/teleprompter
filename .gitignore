@@ -5,3 +5,5 @@ Teleprompter.app/
 *.xcuserstate
 xcuserdata/
 .impeccable/evidence/
+Teleprompter.pkg
+*.xcarchive
