@@ -39,7 +39,7 @@ targets:
         NSSupportsAutomaticTermination: false
         NSSupportsSuddenTermination: false
         NSMicrophoneUsageDescription: "Teleprompter listens to your voice so the script scrolls at the pace you read. Audio is processed on this Mac and never sent anywhere."
-        NSSpeechRecognitionUsageDescription: "Teleprompter matches the words you read against your script to keep it in sync. Recognition runs on this Mac and never sent to Apple."
+        NSSpeechRecognitionUsageDescription: "Teleprompter matches the words you read against your script to keep it in sync. Recognition runs on this Mac and is never sent to Apple."
     entitlements:
       path: Teleprompter.entitlements
       properties:

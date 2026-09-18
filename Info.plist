@@ -35,7 +35,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Teleprompter matches the words you read against your script to keep it in sync. Recognition runs on this Mac and never sent to Apple.</string>
+	<string>Teleprompter matches the words you read against your script to keep it in sync. Recognition runs on this Mac and is never sent to Apple.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 	<key>NSSupportsSuddenTermination</key>
