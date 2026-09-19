@@ -23,6 +23,8 @@ record in App Store Connect and uploading — both need your Apple account, so t
 - `LSApplicationCategoryType`, copyright, minimum system version 14.0, version 1.0 (build 1)
 - Microphone and speech permission strings that state audio never leaves the Mac
 - Hardened Runtime on
+- Store screenshots at 1440×900 in `Marketing/screenshots/`
+- Archive present in Xcode's Organizer (Window → Organizer → Archives)
 - **Signed distribution build produced**: `Teleprompter.pkg` at the project root
   - App signed by `Apple Distribution: John LaCroix (H32976WAHU)`
   - Installer signed by `3rd Party Mac Developer Installer: John LaCroix (H32976WAHU)`
@@ -64,9 +66,16 @@ xcodebuild -exportArchive -archivePath build/TP.xcarchive \
 
 ### 3. Fill in the listing
 
-Draft copy is below. Screenshots are required: at least one, 1280×800 or 1440×900. You can take
-them with ⌘⇧4 then Space over the prompter window, but note that **hide-from-screen-sharing must
-be switched off** or the window will not appear in the capture.
+Draft copy is below. **Screenshots are ready** in `Marketing/screenshots/` — three at 1440×900,
+which is a size the Mac App Store accepts:
+
+- `01-under-the-camera.png` — the prompter mid-read
+- `02-pace-in-words.png` — the settings window and the rig picker
+- `03-three-setups.png` — the webcam rig at larger type
+
+They were captured from the real app with hide-from-screen-sharing switched off, since the window
+is deliberately invisible to screen capture when that setting is on. If you retake any, switch it
+off first or you will capture an empty rectangle.
 
 ### 4. Privacy answers
 
